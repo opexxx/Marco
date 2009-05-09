@@ -78,8 +78,7 @@ for o, a in opts:
 		usage()
 
 # Start the response monitor first
-monitor = ArpMonitorThread(map)
-monitor.start()
+ArpMonitorThread(map).start()
 
 # Create our packet list
 pkts = []
