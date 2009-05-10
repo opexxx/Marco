@@ -93,11 +93,6 @@ for o, a in opts:
 	else:
 		usage()
 
-# Make sure we received a diff size
-if (gateways or broadcasts) and (diff < 1):
-	print "subnet-diff should be specified with gateway-only or broacast-only"
-	usage()
-	
 # Start the response monitor first
 ArpMonitorThread(map).start()
 
@@ -114,7 +109,7 @@ else:
 for subnet in subnets: 
 
 	# Do we split and just send to the broadcasts/gateways?		
-	if diff > 0:
+	if broadcasts or gateways:
 
 		# Broacast only
 		if broadcasts:
