@@ -35,7 +35,7 @@ class ArpMonitorThread(Thread):
 				sys.exit(0)
 
 	def run(self):
-		sniff(filter='arp', store=0, prn=self.arp_callback)
+		sniff(filter='(arp) and (not ether dst host ff:ff:ff:ff:ff:ff)', store=0, prn=self.arp_callback)
 
 def usage():
 	print "python marco.py [-i <iface>] [-n <network/range>] [-t <timeout>] " + \
