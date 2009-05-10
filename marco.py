@@ -69,7 +69,7 @@ for o, a in opts:
 	elif o in ('-t', '--timeout'):
 		timeout = int(a)
 	elif o in ('-s', '--saddr'):
-		saddr = int(a)
+		saddr = a
 	elif o in ('-c', '--count'):
 		count = (int(a) if (int(a) > 0) else 1) 
 	elif o == '-m':
