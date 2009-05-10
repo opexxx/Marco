@@ -39,7 +39,7 @@ class ArpMonitorThread(Thread):
 
 def usage():
 	print "python marco.py [-i <iface>] [-n <network/range>] [-t <timeout>] " + \
-			"[-s <saddr>] [-c <count>] [-b <subnet-diff>] [-g <subnet-diff>] [-m] [-h]"
+			"[-s <saddr>] [-c <count>] [-d <subnet-diff>] [-b] [-g] [-m] [-h]"
 	print "\tiface: network interface to send and listen on. (default: lo)"
 	print "\tnetwork/range: network to scan in CIDR notation. (default: 127.0.0.1)"
 	print "\ttimeout: how long to wait for responses after sending. (default: 0)"
@@ -47,6 +47,7 @@ def usage():
 	print "\tcount: number of times to send the packets (default: 1)"
 	print "\tsubnet-diff: The number of bits to use to split the subnet up. (default: 0)"
 	print "\t\tFor a /24, 1 would split into two /25s, 2 into four /26s, etc. "
+	print "\t\tRequired with either -b or -g"
 	print "\t-m: Find all hosts on the network not just the first response (default: disabled)"
 	print "\t-b: Broadcast addresses only by splitting into subnets (default: disabled)"
 	print "\t-b: Gateways only (assumed the first IP of the range) (default: disabled)"
@@ -56,7 +57,7 @@ def usage():
 network = '127.0.0.1'
 saddr = '1.1.1.1'
 iface = 'lo'
-subnets = 0
+diff = 0
 count = 1
 map = False
 gateways = False
@@ -65,8 +66,8 @@ timeout = 0
 
 # Parse our arguments
 try:
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:n:t:s:c:b:g:hm', \
-		['interface=', 'network=', 'timeout=', 'saddr=', 'count=', 'broadcast-only=', 'gateway-only='])
+	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:n:t:s:c:d:bghm', \
+		['interface=', 'network=', 'timeout=', 'saddr=', 'count=', 'subnet-diff='])
 except getopt.GetoptError, err:
 	usage()
 	
@@ -81,17 +82,22 @@ for o, a in opts:
 		saddr = a
 	elif o in ('-c', '--count'):
 		count = (int(a) if (int(a) > 0) else 1) 
+	elif o in ('-d', '--subnet-diff'):
+		diff = (int(a) if (int(a) > 0) else 0) 
 	elif o in ('-b', '--broadcast-only'):
-		subnets = (int(a) if (int(a) > 0) else 0)	
 		broadcasts = True
 	elif o in ('-g' '--gateway-only'):
-		subnets = (int(a) if (int(a) > 0) else 0)	
 		gateways = True
 	elif o == '-m':
 		map = True
 	else:
 		usage()
 
+# Make sure we received a diff size
+if (gateways or broadcasts) and (diff < 1):
+	print "subnet-diff should be specified with gateway-only or broacast-only"
+	usage()
+	
 # Start the response monitor first
 ArpMonitorThread(map).start()
 
@@ -99,19 +105,23 @@ ArpMonitorThread(map).start()
 pkts = []
 
 # Do we split the address space up?
-if subnets > 0:
-	networks = ipaddr.IPv4(network).Subnet(subnets)
+if diff > 0:
+	subnets = ipaddr.IPv4(network).Subnet(diff)
 else:
-	networks = [ipaddr.IPv4(network)]
+	subnets = [ipaddr.IPv4(network)]
 
 # Create our packets	
-for subnet in networks: 
+for subnet in subnets: 
 
 	# Do we split and just send to the broadcasts/gateways?		
-	if subnets > 0:
+	if diff > 0:
+
+		# Broacast only
 		if broadcasts:
 			pkts.append(Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(psrc=saddr, pdst=subnet.broadcast_ext))
-		else: # Gateways only
+
+		# Gateways only
+		if gateways:
 			pkts.append(Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(psrc=saddr, pdst=ipaddr.IPv4(subnet.network + 1).ip_ext))
 	else:
 		# Add all of the ips in the range
