@@ -35,29 +35,38 @@ class ArpMonitorThread(Thread):
 				sys.exit(0)
 
 	def run(self):
-		sniff(filter='(arp) and (not ether dst host ff:ff:ff:ff:ff:ff)', store=0, prn=self.arp_callback)
+		sniff(filter='arp', store=0, prn=self.arp_callback)
 
 def usage():
-	print "python marco.py [-i <iface>] [-n <network/range>] [-t <timeout>] [-s <saddr>] [-c <count>] [-m] [-h]"
+	print "python marco.py [-i <iface>] [-n <network/range>] [-t <timeout>] " + \
+			"[-s <saddr>] [-c <count>] [-b <subnet-diff>] [-g <subnet-diff>] [-m] [-h]"
 	print "\tiface: network interface to send and listen on. (default: lo)"
 	print "\tnetwork/range: network to scan in CIDR notation. (default: 127.0.0.1)"
 	print "\ttimeout: how long to wait for responses after sending. (default: 0)"
-	print "\tsaddr: source address to originate the arp packets from. (default: 127.0.0.1)"
+	print "\tsaddr: source address to originate the arp packets from. (default: 1.1.1.1)"
 	print "\tcount: number of times to send the packets (default: 1)"
+	print "\tsubnet-diff: The number of bits to use to split the subnet up. (default: 0)"
+	print "\t\tFor a /24, 1 would split into two /25s, 2 into four /26s, etc. "
 	print "\t-m: Find all hosts on the network not just the first response (default: disabled)"
+	print "\t-b: Broadcast addresses only by splitting into subnets (default: disabled)"
+	print "\t-b: Gateways only (assumed the first IP of the range) (default: disabled)"
 	sys.exit(0)
 
 # Defaults
 network = '127.0.0.1'
-saddr = '127.0.0.1'
+saddr = '1.1.1.1'
 iface = 'lo'
+subnets = 0
 count = 1
 map = False
+gateways = False
+broadcasts = False
 timeout = 0
 
 # Parse our arguments
 try:
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:n:t:s:c:hm', ['interface=', 'network=', 'timeout=', 'saddr=', 'count='])
+	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:n:t:s:c:b:g:hm', \
+		['interface=', 'network=', 'timeout=', 'saddr=', 'count=', 'broadcast-only=', 'gateway-only='])
 except getopt.GetoptError, err:
 	usage()
 	
@@ -72,6 +81,12 @@ for o, a in opts:
 		saddr = a
 	elif o in ('-c', '--count'):
 		count = (int(a) if (int(a) > 0) else 1) 
+	elif o in ('-b', '--broadcast-only'):
+		subnets = (int(a) if (int(a) > 0) else 0)	
+		broadcasts = True
+	elif o in ('-g' '--gateway-only'):
+		subnets = (int(a) if (int(a) > 0) else 0)	
+		gateways = True
 	elif o == '-m':
 		map = True
 	else:
@@ -82,8 +97,26 @@ ArpMonitorThread(map).start()
 
 # Create our packet list
 pkts = []
-for ip in ipaddr.IPv4(network):
-	pkts.append(Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(psrc=saddr, pdst=ip))
+
+# Do we split the address space up?
+if subnets > 0:
+	networks = ipaddr.IPv4(network).Subnet(subnets)
+else:
+	networks = [ipaddr.IPv4(network)]
+
+# Create our packets	
+for subnet in networks: 
+
+	# Do we split and just send to the broadcasts/gateways?		
+	if subnets > 0:
+		if broadcasts:
+			pkts.append(Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(psrc=saddr, pdst=subnet.broadcast_ext))
+		else: # Gateways only
+			pkts.append(Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(psrc=saddr, pdst=ipaddr.IPv4(subnet.network + 1).ip_ext))
+	else:
+		# Add all of the ips in the range
+		for ip in subnet:
+			pkts.append(Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(psrc=saddr, pdst=ip))
 
 # Send our packets
 for i in range(1, count): 
